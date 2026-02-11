@@ -1,0 +1,141 @@
+version: '3.8'
+
+services:
+  # Java Backend API
+  freebotsigur-backend:
+    build:
+      context: ../freebotsigur
+      dockerfile: Dockerfile
+    container_name: freebotsigur-backend
+    ports:
+      - "8080:8080"
+    environment:
+      # Database
+      DATABASE_URL: jdbc:postgresql://postgres:5432/freebotsigur
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      # SMTP (optional)
+      SMTP_HOST: ${SMTP_HOST:-smtp.example.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # Sigur integration
+      SIGUR_HOST: ${SIGUR_HOST:-}
+      SIGUR_USERNAME: ${SIGUR_USERNAME:-}
+      SIGUR_PASSWORD: ${SIGUR_PASSWORD:-}
+      # AST integration
+      AST_HOST: ${AST_HOST:-}
+      AST_USERNAME: ${AST_USERNAME:-}
+      AST_PASSWORD: ${AST_PASSWORD:-}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - freebot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Python Telegram Bot
+  freebot-telegram:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: freebot-telegram
+    environment:
+      TZ: "Europe/Moscow"
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      BACKEND_BASE_URL: http://freebotsigur-backend:8080
+      REQUEST_TIMEOUT: 10
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:-password}
+      MONGO_NAME: ${MONGO_NAME:-freebot}
+    depends_on:
+      - freebotsigur-backend
+      - mongodb
+    networks:
+      - freebot-network
+    restart: unless-stopped
+
+  # MongoDB for bot state
+  mongodb:
+    image: mongo:7
+    container_name: freebot-mongodb
+    ports:
+      - "127.0.0.1:27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
+      MONGO_INITDB_DATABASE: ${MONGO_NAME:-freebot}
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - freebot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL for backend
+  postgres:
+    image: postgres:16-alpine
+    container_name: freebot-postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: freebotsigur
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - freebot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for backend caching
+  redis:
+    image: redis:7-alpine
+    container_name: freebot-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - freebot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  freebot-network:
+    driver: bridge
+    name: freebot-network
+
+volumes:
+  mongo-data:
+    name: freebot-mongo-data
+  postgres-data:
+    name: freebot-postgres-data
+  redis-data:
+    name: freebot-redis-data
