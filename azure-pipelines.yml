@@ -1,0 +1,68 @@
+trigger:
+  - stage
+
+pool:
+  name: RubiusProjects
+  demands: Docker
+
+stages:
+- stage: CI
+  displayName: CI stage
+  variables:
+   - group: service-freebot-aldera
+  jobs:
+  - job: BuildandPush
+    displayName: Docker build and Push
+    steps:
+
+    - task: DockerCompose@0
+      displayName: 'Docker Compose Build'
+      inputs:
+        containerregistrytype: 'Container Registry'
+        dockerRegistryEndpoint: nexus-cr
+        dockerComposeFile: 'docker-compose.yml'
+        dockerComposeFileArgs: BACKEND_BUILD_NUMBER=$(Build.BuildNumber)
+        action: 'Build services'
+
+    - task: DockerCompose@0
+      displayName: 'Docker Compose Push'
+      inputs:
+        containerregistrytype: 'Container Registry'
+        dockerRegistryEndpoint: nexus-cr
+        dockerComposeFile: 'docker-compose.yml'
+        dockerComposeFileArgs: BACKEND_BUILD_NUMBER=$(Build.BuildNumber)
+        action: 'Push services'
+
+- stage: CD
+  displayName: CD stage
+  dependsOn: CI
+  variables:
+   - group: service-freebot-aldera
+
+  jobs:
+  - job: deploy
+    displayName: Deploy python-service for chat-bot
+    steps:
+
+    - task: DockerCompose@0
+      displayName: 'Pull images'
+      inputs:
+        containerregistrytype: 'Container Registry'
+        dockerRegistryEndpoint: nexus-cr
+        dockerComposeFileArgs: BACKEND_BUILD_NUMBER=$(Build.BuildNumber)
+        projectName: 'service-freebot-$(ENVIRONMENT_NAME)'
+        dockerComposeCommand: pull
+        dockerHostEndpoint: 'server-docker-dmz'
+     
+    - task: DockerCompose@0
+      displayName: 'Run service'
+      inputs:
+        containerregistrytype: 'Container Registry'
+        dockerRegistryEndpoint: nexus-cr
+        # dockerComposeFileArgs: |
+        #   BACKEND_BUILD_NUMBER=$(Build.BuildNumber)
+        #   REDIS__PASSWORD=$(REDIS__PASSWORD)
+        projectName: 'service-freebot-$(ENVIRONMENT_NAME)'
+        action: 'Run services'
+        buildImages: false
+        dockerHostEndpoint: 'server-docker-dmz'

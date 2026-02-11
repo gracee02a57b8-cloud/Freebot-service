@@ -1,0 +1,27 @@
+Описание CI
+
+CI реализован в файле azure-pipelines.yml и состоит из двух стадий: CI и CD. Ниже описание именно стадии CI.
+
+Стадия CI (Build and Push)
+- Триггер: ветка stage.
+- Агент: пул RubiusProjects, требование наличия Docker.
+- Используемая переменная группа: service-freebot-aldera.
+
+Задачи в CI:
+1) Docker Compose Build
+   - Тип: DockerCompose@0.
+   - Действие: Build services.
+   - Используется docker-compose.yml.
+   - Параметр dockerComposeFileArgs: BACKEND_BUILD_NUMBER=$(Build.BuildNumber).
+   - Реестр: nexus-cr.
+
+2) Docker Compose Push
+   - Тип: DockerCompose@0.
+   - Действие: Push services.
+   - Используется docker-compose.yml.
+   - Параметр dockerComposeFileArgs: BACKEND_BUILD_NUMBER=$(Build.BuildNumber).
+   - Реестр: nexus-cr.
+
+Итог CI:
+- Сборка контейнеров сервиса бота и зависимостей по docker-compose.
+- Публикация собранных образов в приватный registry (nexus-cr).

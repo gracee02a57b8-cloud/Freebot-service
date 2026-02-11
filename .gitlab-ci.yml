@@ -1,0 +1,43 @@
+stages:
+  - build
+  - deploy
+
+build:
+  stage: build
+  variables: 
+    CI_ENVIRONMENT_NAME: "$CI_ENVIRONMENT_NAME"
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker-compose build && docker-compose push
+  tags:
+    - docker
+
+
+.deploy:
+  stage: deploy
+  before_script: 
+    - echo "$CI_ID_RSA" > key
+    - chmod 400 key
+    - env > .env
+  script: 
+    - ssh -i key -o StrictHostKeyChecking=no $CI_SERVER_USER@$CI_SERVER_IP "docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY"
+    - scp -i key -o StrictHostKeyChecking=no docker-compose.yml $CI_SERVER_USER@$CI_SERVER_IP:$CI_HOST_PATH
+    - scp -i key -o StrictHostKeyChecking=no .env $CI_SERVER_USER@$CI_SERVER_IP:$CI_HOST_PATH
+    - ssh -i key -o StrictHostKeyChecking=no $CI_SERVER_USER@$CI_SERVER_IP "cd $CI_HOST_PATH && docker-compose pull && docker-compose up -d"
+  tags:
+    - docker
+  when: always
+
+deploy-prod:
+  environment: prod
+  only:
+    - release-rubius
+  when: manual
+  extends: .deploy
+
+deploy-dev:
+  environment: dev
+  only:
+     - release-rubius
+  when: manual
+  extends: .deploy
